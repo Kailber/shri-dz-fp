@@ -3,7 +3,7 @@ import {curry} from 'ramda';
 
 export default class Api {
     constructor(params = {}) {
-        const {errorCountdown = 7, ebableErrors = true}= params;
+        const {errorCountdown = 7, ebableErrors = true} = params;
 
         this.whiteListHost = ['api.tech', 'animals.tech'];
         this.errorCountdown = errorCountdown;
@@ -44,7 +44,7 @@ export default class Api {
         
                 if (!this.whiteListHost.some(allowedHost => allowedHost === host)) {
                     reject('Доступны только хосты "api.tech" и "animals.tech"');
-                 }
+                }
         
                 switch(host) {
                     case 'api.tech':

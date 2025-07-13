@@ -1,51 +1,72 @@
-/**
- * @file Домашка по FP ч. 2
- *
- * Подсказки:
- * Метод get у инстанса Api – каррированый
- * GET / https://animals.tech/{id}
- *
- * GET / https://api.tech/numbers/base
- * params:
- * – number [Int] – число
- * – from [Int] – из какой системы счисления
- * – to [Int] – в какую систему счисления
- *
- * Иногда промисы от API будут приходить в состояние rejected, (прямо как и API в реальной жизни)
- * Ответ будет приходить в поле {result}
- */
- import Api from '../tools/api';
+import { pipe, gte, tap, allPass, lte } from 'ramda';
+import Api from '../tools/api';
 
- const api = new Api();
+const api = new Api();
+// Основная функция для обработки последовательности
+const processSequence = async (
+    { 
+        value, 
+        writeLog, 
+        handleSuccess, 
+        handleError 
+    }) => {
+        // 1. Логируем исходную строку
+        writeLog(value);
 
- /**
-  * Я – пример, удали меня
-  */
- const wait = time => new Promise(resolve => {
-     setTimeout(resolve, time);
- })
+        // 2. Валидация
+        const isValid = allPass([
+            value => lte(value.length, 9), // Длина строки меньше 10 символов
+            value => gte(value.length, 3), // Длина строки больше 2 символов
+            value => gte(parseFloat(value), 1), // Значение положительное
+            value => /^[0-9.]+$/.test(value) // Проверка формата строки: только цифры и точки
+        ]);
 
- const processSequence = ({value, writeLog, handleSuccess, handleError}) => {
-     /**
-      * Я – пример, удали меня
-      */
-     writeLog(value);
+        // Если строка не валидна, вызываем обработчик ошибки 
+        if (!isValid(value)) {
+            handleError('ValidationError');
+            return;
+        }
 
-     api.get('https://api.tech/numbers/base', {from: 2, to: 10, number: '01011010101'}).then(({result}) => {
-         writeLog(result);
-     });
+        // 3. Преобразуем, округляем и логируем значение
+        const num = pipe(
+            parseFloat, 
+            Math.round, 
+            tap(writeLog)
+        )(value);
 
-     wait(2500).then(() => {
-         writeLog('SecondLog')
-
-         return wait(1500);
-     }).then(() => {
-         writeLog('ThirdLog');
-
-         return wait(400);
-     }).then(() => {
-         handleSuccess('Done');
-     });
- }
+        // 4. Перевод в двоичную через API
+        api.get('https://api.tech/numbers/base', { from: 10, to: 2, number: num })
+            .then(({ result: binary }) => {
+                writeLog(binary);
+                return binary;
+            })
+            // 5. Длина бинарной строки
+            .then(binary => {
+                const len = binary.length;
+                writeLog(len);
+                return len;
+            })
+            // 6. Квадрат
+            .then(len => {
+                const sq = len * len;
+                writeLog(sq);
+                return sq;
+            })
+            // 7. Остаток от деления на 3
+            .then(sq => {
+                const rem = sq % 3;
+                writeLog(rem);
+                return rem;
+            })
+            // 8. Получаем животное по id
+            .then(rem => api.get(`https://animals.tech/${rem}`, {}))
+            .then(({ result: animal }) => {
+                // 9. Успех
+                handleSuccess(animal);
+            })
+            .catch(err => {
+                handleError(err.toString());
+            });
+};
 
 export default processSequence;
