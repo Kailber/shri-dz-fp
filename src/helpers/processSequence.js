@@ -1,72 +1,92 @@
-import { pipe, gte, tap, allPass, lte } from 'ramda';
+import { pipe, test, gte, allPass, lte, tap, pipeWith } from 'ramda';
 import Api from '../tools/api';
 
 const api = new Api();
-// Основная функция для обработки последовательности
-const processSequence = async (
-    { 
-        value, 
-        writeLog, 
-        handleSuccess, 
-        handleError 
-    }) => {
-        // 1. Логируем исходную строку
-        writeLog(value);
 
-        // 2. Валидация
-        const isValid = allPass([
-            value => lte(value.length, 9), // Длина строки меньше 10 символов
-            value => gte(value.length, 3), // Длина строки больше 2 символов
-            value => gte(parseFloat(value), 1), // Значение положительное
-            value => /^[0-9.]+$/.test(value) // Проверка формата строки: только цифры и точки
-        ]);
+// Обёртка над pipeWith для асинхронных шагов
+const createAsyncPipeline = fns => pipeWith(
+    (fn, res) => Promise.resolve(res).then(fn),
+    fns
+);
 
-        // Если строка не валидна, вызываем обработчик ошибки 
-        if (!isValid(value)) {
-            handleError('ValidationError');
-            return;
-        }
+// Функция для перевода числа в двоичную систему через API
+const baseConvert = num =>
+    api.get('https://api.tech/numbers/base', { from: 10, to: 2, number: num })
+        .then(({ result }) => result);
 
-        // 3. Преобразуем, округляем и логируем значение
-        const num = pipe(
-            parseFloat, 
-            Math.round, 
-            tap(writeLog)
-        )(value);
+// Функция для получения животного по ID через API
+const getAnimal = id =>
+    api.get(`https://animals.tech/${id}`)({})
+        .then(({ result }) => result);
 
-        // 4. Перевод в двоичную через API
-        api.get('https://api.tech/numbers/base', { from: 10, to: 2, number: num })
-            .then(({ result: binary }) => {
-                writeLog(binary);
-                return binary;
-            })
-            // 5. Длина бинарной строки
-            .then(binary => {
-                const len = binary.length;
-                writeLog(len);
-                return len;
-            })
-            // 6. Квадрат
-            .then(len => {
-                const sq = len * len;
-                writeLog(sq);
-                return sq;
-            })
-            // 7. Остаток от деления на 3
-            .then(sq => {
-                const rem = sq % 3;
-                writeLog(rem);
-                return rem;
-            })
-            // 8. Получаем животное по id
-            .then(rem => api.get(`https://animals.tech/${rem}`, {}))
-            .then(({ result: animal }) => {
-                // 9. Успех
-                handleSuccess(animal);
-            })
-            .catch(err => {
-                handleError(err.toString());
-            });
+// Проверка формата строки: только цифры и точки
+const isValidFormat = pipe(
+    test(/^[0-9.]+$/),
+    Boolean
+);
+
+// Проверка длины строки: от 3 до 9 символов
+const isLengthValid = allPass([
+    value => gte(value.length, 3),
+    value => lte(value.length, 9)
+]);
+
+// Проверка, что число положительное
+const isPositive = value => gte(parseFloat(value), 1);
+
+// Общая валидация строки
+const validate = allPass([
+    isValidFormat,
+    isLengthValid,
+    isPositive
+]);
+
+const validationCheck = (value) => {
+    if (!validate(value)) throw new Error("ValidationError");
+    return value;
 };
+
+// Преобразование в число с округлением и логированием
+const toNumber = pipe(
+    parseFloat, 
+    Math.round
+);
+
+// Получение длины строки
+const toLength = x => x.length;
+
+// Возведение в квадрат
+const toSquare = x => x * x;
+
+// Остаток от деления на 3
+const toMod3 = x => x % 3;
+
+// Композиция функций с поддержкой промисов
+const pipeline = writeLog => createAsyncPipeline([
+    tap(writeLog),
+    validationCheck,
+    toNumber,
+    tap(writeLog),
+    baseConvert,
+    tap(writeLog),
+    toLength,
+    tap(writeLog),
+    toSquare,
+    tap(writeLog),
+    toMod3,
+    tap(writeLog),
+    getAnimal
+]);
+
+// Основная функция для обработки последовательности
+const processSequence = ({ value, writeLog, handleSuccess, handleError }) =>
+    pipeline(writeLog)(value)
+        .then(handleSuccess) // Успешный результат
+        .catch(err => 
+            handleError(err.message === "ValidationError" 
+                ? "ValidationError" // Ошибка валидации
+                : err // Ошибка API или другая
+            )
+        );
 
 export default processSequence;
